@@ -1,3 +1,4 @@
+
 '''
 interface to genesis
 '''
@@ -350,7 +351,7 @@ class GenesisInput: # Genesis input files storage object
         if self.outputfile != None:
             input = input.replace("__OUTPUTFILE__", " outputfile  =  '"+ str(self.outputfile)+ "'")
         else:
-            input = input.replace("__OUTPUTFILE__", "outputfile ='run.__RUNID__.gout'")
+            input = input.replace("__OUTPUTFILE__", " outputfile ='run.__RUNID__.gout'")
 
         #print 'self.radfile is equal to ', self.radfile
         if self.radfile != None:
@@ -414,8 +415,8 @@ class GenesisParticles: # Genesis particle *.dpa files storage object
         self.y = []
         self.px = []
         self.py = []
-        self.z = []
-        self.t = []
+        # self.z = []
+        # self.t = []
 
         self.filename = ''
         
@@ -429,7 +430,8 @@ class GenesisParticlesDist: # Genesis electron beam distribution *.dat files sto
         self.py = [] # divergence in y
         self.t = [] # longitudinal position in seconds
         self.e = [] # total energy, normalized mc2
-
+        self.charge=[]
+        
         self.filename = ''
 
         
@@ -465,14 +467,16 @@ class GenesisBeamDefinition(): # Genesis analytical radiation input files storag
 '''
 
 def read_particle_file(file_name, nbins=4, npart=[],debug=0):
-    print ('    reading praticle file' )
+    if debug: print ('    reading praticle file' )
     particles=GenesisParticles() 
     
     start_time = time.time()
     b=np.fromfile(file_name,dtype=float)
-    print("--- read Particles - %s seconds ---" % (time.time() - start_time))
+    if debug: print("     read Particles in %s sec" % (time.time() - start_time))
 #    print 'b', b.shape
     nslice=int(len(b)/npart/6)
+    nbins=int(nbins)
+    npart=int(npart)
     if debug:
         print ('        nslice'+str(nslice))
         print ('        npart'+str(npart))
@@ -553,6 +557,7 @@ def read_beam_file(fileName):
     beam.z = beam.column_values['ZPOS']
     beam.zsep = beam.z[1] - beam.z[0]
     beam.I = np.array(beam.column_values['CURPEAK'])
+    beam.idx_max = np.argmax(beam.I)
     try:
         beam.ex = beam.column_values['EMITX']
         beam.ey = beam.column_values['EMITY']
@@ -567,7 +572,7 @@ def read_beam_file(fileName):
         beam.px = beam.column_values['PXBEAM']
         beam.py = beam.column_values['PYBEAM']
         beam.g0 = np.array(beam.column_values['GAMMA0'])
-        beam.dg = np.array(beam.column_values['DELGAM'])	
+        beam.dg = np.array(beam.column_values['DELGAM'])
     except:
         pass
     
@@ -771,13 +776,13 @@ def writeRadiationFile_mpi(comm, filename, slices, shape):
         os.system(cmd)
 
 
-def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
+def readGenesisOutput(fileName, readall=True, debug=False, precision=float):
     out = GenesisOutput()
     out.path = fileName
     out.filename = fileName[-fileName[::-1].find('/')::]
 
-    print(' ')
-    print('    reading output file "'+out.filename+'"')
+    if debug: print(' ')
+    if debug: print('    reading output file "'+out.filename+'"')
 #    print '        - reading from ', fileName
 
     chunk = ''
@@ -806,19 +811,18 @@ def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
         if tokens[0] == '**********':
             chunk = 'slices'
             nSlice = int(tokens[3])
-            if debug:
-                print ('      reading slice # '+ str(nSlice))
+            if debug==2: print ('      reading slice # '+ str(nSlice))
 
         if tokens[0] == 'power':
             chunk = 'slice'
             if len(out.sliceKeys) == 0: #to record the first instance
                 out.sliceKeys = list(copy(tokens))
-                print ('      reading slice values ')
+                if debug: print ('      reading slice values ')
             continue
             
         if tokens[0] == '$newrun':
             chunk = 'input1'
-            print ('      reading input parameters')
+            if debug: print ('      reading input parameters')
             continue  
 
         if tokens[0] == '$end':
@@ -827,7 +831,7 @@ def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
         
         if tokens == ['z[m]', 'aw', 'qfld']:
             chunk = 'magnetic optics'
-            print ('      reading magnetic optics ')
+            if debug: print ('      reading magnetic optics ')
             continue
 
         if chunk == 'magnetic optics':
@@ -868,7 +872,7 @@ def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
         # print out.sliceKeys
         for i in range(len(out.sliceKeys)):
             #exec('out.'+out.sliceKeys[i].replace('-','_').replace('<','').replace('>','') + ' = output_unsorted[:,'+str(i)+'].reshape(('+str(out.nSlices)+','+str(len(out.z))+'))')
-            exec('out.'+out.sliceKeys[i].replace('-','_').replace('<','').replace('>','') + ' = output_unsorted[:,'+str(i)+'].reshape(('+str(out('history_records'))+','+str(out('entries_per_record'))+'))')
+            exec('out.'+out.sliceKeys[int(i)].replace('-','_').replace('<','').replace('>','') + ' = output_unsorted[:,'+str(i)+'].reshape(('+str(int(out('history_records')))+','+str(int(out('entries_per_record')))+'))')
         if hasattr(out,'energy'):
             out.energy+=out('gamma0')
         out.power_z=np.max(out.power,0)
@@ -878,8 +882,8 @@ def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
     out.nZ = int(out('entries_per_record'))#number of records along the undulator
     out.ncar=int(out('ncar')) #number of mesh points
 
-    print ('        nSlice '+ str(out.nSlices))
-    print ('        nZ '+ str(out.nZ))
+    if debug: print ('        nSlice '+ str(out.nSlices))
+    if debug: print ('        nZ '+ str(out.nZ))
 
     if out('dgrid')==0:
         rbeam=sqrt(out('rxbeam')**2+out('rybeam')**2)
@@ -955,37 +959,37 @@ def readGenesisOutput(fileName , readall=True, debug=None, precision=float):
         out.phi=out.phi_mid[:,-1]
         out.energy=np.mean(out.p_int,axis=0)*out('xlamds')*out('zsep')*out.nSlices/speed_of_light
     
-    print('      done in %.3f seconds' % (time.time() - start_time))        
+    if debug: print('      done in %.3f seconds' % (time.time() - start_time))        
     return out
 
 
-def dpa2dist(gen,dpa=None,file_name_write='',no_macroparticles=1e5,debug=0):
-    
+def dpa2dist(out,dpa=None,num_part=1e5,smear=0,debug=False):
+    from matplotlib import pyplot as plt
     import random
     import numpy as np
         
-    npart=int(gen('npart'))
-    # nslice=int(gen('nslice'))
-    nslice=int(gen.nSlices)
-    nbins=int(gen('nbins'))
-    xlamds=gen('xlamds')
-    zsep=int(gen('zsep'))
-    gen_I=gen.I
-    gen_t=gen.t    
+    npart=int(out('npart'))
+    # nslice=int(out('nslice'))
+    nslice=int(out.nSlices)
+    nbins=int(out('nbins'))
+    xlamds=out('xlamds')
+    zsep=int(out('zsep'))
+    gen_I=out.I
+    gen_t=out.t    
     
     if dpa==None:
         dpa=out.path+'.dpa'
     if dpa.__class__==str:
         try:
-            par=read_particle_file(dpa, nbins=nbins, npart=npart,debug=debug)
+            dpa=read_particle_file(dpa, nbins=nbins, npart=npart,debug=debug)
         except IOError:
             print ('      ERR: no such file "'+dpa+'"')
             print ('      ERR: reading "'+out.path+'.dpa'+'"')
-            par=read_particle_file(out.path+'.dpa', nbins=nbins, npart=npart,debug=debug)
-    if dpa.__class__==GenesisParticles:
-        par=dpa
+            dpa=read_particle_file(out.path+'.dpa', nbins=nbins, npart=npart,debug=debug)
+    if dpa.__class__!=GenesisParticles:
+        print('   could not read particle file')
     
-    # print par.e.shape
+    # print dpa.e.shape
     #start_time = time.time()
     #for i in range(100):
     m=np.arange(nslice)
@@ -994,90 +998,137 @@ def dpa2dist(gen,dpa=None,file_name_write='',no_macroparticles=1e5,debug=0):
     # m=np.broadcast_to(m,[nbins,npart/nbins,nslice])
     # m=np.rollaxis(m,2,0)
     #print("--- Create matrix - %s seconds ---" % (time.time() - start_time))
-
-    par.z=par.ph*xlamds/2/pi+m*xlamds*zsep+xlamds*zsep*(1-np.random.random((nslice, nbins,npart/nbins)))
-    par.t=par.z/speed_of_light
+    if smear:
+        dpa.z=dpa.ph*xlamds/2/pi+m*xlamds*zsep+xlamds*zsep*(1-np.random.random((nslice, nbins,npart/nbins)))
+    else:
+        dpa.z=dpa.ph*xlamds/2/pi+m*xlamds*zsep
+        
+    dpa.t=np.array(dpa.z/speed_of_light)
     
     t_scale=np.linspace(0,nslice*zsep*xlamds/speed_of_light*1e15,nslice)
     # print 'range_t_scale', np.amin(t_scale), np.amax(t_scale)
     # print 'range_gen_t', np.amin(gen_t), np.amax(gen_t)
-    I_scale=np.interp(t_scale,gen_t,gen_I)
-
-    pick_n=I_scale
-    pick_n=(pick_n/np.sum(pick_n)*no_macroparticles).astype(int)
-    # print sum(pick_n)
-    result_filesize=sum(pick_n)
-    t_out=[]
-    e_out=[]
-    x_out=[]
-    y_out=[]
-    px_out=[]
-    py_out=[]
-    # print 'max_par.t', np.amax(par.t)
-    # print 'par.e', np.amax(par.e),np.amin(par.e)
-    par.t=np.reshape(par.t,(nslice,npart))
-    par.e=np.reshape(par.e,(nslice,npart))
-    par.x=np.reshape(par.x,(nslice,npart))
-    par.y=np.reshape(par.y,(nslice,npart))
-    par.px=np.reshape(par.px,(nslice,npart))
-    par.py=np.reshape(par.py,(nslice,npart))
-    # print par.t.shape
+    pick_n=np.interp(t_scale,gen_t,gen_I)
+    # plt.plot(gen_t,gen_I)
+    # plt.show()
     
-    # print par.t.shape
-    # print 'max_par.t', np.amax(par.t)
-    # print 'par.e', np.amax(par.e),np.amin(par.e)
+    if max(pick_n)>npart:
+        pick_n=(pick_n/max(pick_n)*npart).astype(int) 
+    else:
+        pick_n=(pick_n/np.sum(pick_n)*num_part).astype(int)
+    
+    if debug: print(pick_n)
+    # print sum(pick_n)
+    # result_filesize=sum(pick_n)
+    # t_out=[]
+    # e_out=[]
+    # x_out=[]
+    # y_out=[]
+    # px_out=[]
+    # py_out=[]
+    # print 'max_par.t', np.amax(dpa.t)
+    # print 'dpa.e', np.amax(dpa.e),np.amin(dpa.e)
+    dpa.t=np.reshape(dpa.t,(nslice,npart))
+    dpa.e=np.reshape(dpa.e,(nslice,npart))
+    dpa.x=np.reshape(dpa.x,(nslice,npart))
+    dpa.y=np.reshape(dpa.y,(nslice,npart))
+    dpa.px=np.reshape(dpa.px,(nslice,npart))
+    dpa.py=np.reshape(dpa.py,(nslice,npart))
+    # print dpa.t.shape
+    
+    # print dpa.t.shape
+    # print 'max_par.t', np.amax(dpa.t)
+    # print 'dpa.e', np.amax(dpa.e),np.amin(dpa.e)
     
     dist=GenesisParticlesDist()
     
     for i in arange(nslice):
-        pick_i=random.sample(arange(nslice),pick_n[i])
-        dist.t=append(dist.t,par.t[i,pick_i])
-        dist.e=append(dist.e,par.e[i,pick_i])
-        dist.x=append(dist.x,par.x[i,pick_i])
-        dist.y=append(dist.y,par.y[i,pick_i])
-        dist.px=append(dist.px,par.px[i,pick_i])
-        dist.py=append(dist.py,par.py[i,pick_i])
+        pick_i=random.sample(arange(npart),pick_n[i])
+        dist.t=append(dist.t,dpa.t[i,pick_i])
+        dist.e=append(dist.e,dpa.e[i,pick_i])
+        dist.x=append(dist.x,dpa.x[i,pick_i])
+        dist.y=append(dist.y,dpa.y[i,pick_i])
+        dist.px=append(dist.px,dpa.px[i,pick_i])
+        dist.py=append(dist.py,dpa.py[i,pick_i])
         
     dist.t=dist.t*(-1)+max(dist.t)
     dist.px=dist.px/dist.e
     dist.py=dist.py/dist.e
+    
+    dist.x = flipud(dist.x)
+    dist.y = flipud(dist.y)
+    dist.px = flipud(dist.px)
+    dist.py = flipud(dist.py)
+    dist.t = flipud(dist.t)
+    dist.e = flipud(dist.e)
+    
+    dist.charge=out.beam_charge
+    dist.filename='from dpa'
     # print 'max_y_out', np.amax(t_out)
     # print 'e_out', np.amax(e_out),np.amin(e_out)
-    debug=0 #possible problems with pyplot on cluster
-    if debug==1:
-        import matplotlib.pyplot as plt
-        bins=100
-        # plt.figure('Time - Enenrgy')
-        plt.figure(40001)
-    #    plt.clf()
-        plt.hist2d(t_out, e_out, bins)
-        # plt.figure('Time - X')
-        plt.figure(40002)
-        plt.hist2d(t_out, x_out, bins)
-        # plt.figure('X - Y')
-        plt.figure(40003)
-        plt.hist2d(x_out, y_out, bins)
-        # plt.figure('X - pX')
-        plt.figure(40004)
-        plt.hist2d(x_out, px_out, bins)
-        plt.show()
-
-
-    #REQUIRES NUMPY 1.7
-    # header='? VERSION = 1.0 \n? SIZE = %s \n? CHARGE = %E \n? COLUMNS X XPRIME Y YPRIME T P'%(result_filesize,gen.beam_charge)
-    # np.savetxt(file_name_write, np.c_[x_out,px_out/e_out,y_out,py_out/e_out,t_out,e_out],header=header,fmt="%E", newline='\n',comments='')
     
-    
-    header='? VERSION = 1.0 \n? SIZE = %s \n? CHARGE = %E \n? COLUMNS X XPRIME Y YPRIME T P\n'%(result_filesize,gen.beam_charge)
-    f = file(file_name_write,'w')
-    f.write(header)
-    f.close()
-    f = file(file_name_write,'a')
-    np.savetxt(f, np.c_[dist.x,dist.px,dist.y,dist.py,dist.t,dist.e],fmt="%E", newline='\n')
-    f.close()
     
     return dist
+    
+def write_dist_file (dist,file_name):
 
+    #REQUIRES NUMPY 1.7
+    # header='? VERSION = 1.0 \n? SIZE = %s \n? CHARGE = %E \n? COLUMNS X XPRIME Y YPRIME T P'%(len(dist.x),charge)
+    # np.savetxt(file_name_write, np.c_[dist.x,dist.px,dist.y,dist.py,dist.t,dist.e],header=header,fmt="%E", newline='\n',comments='')
+
+    header='? VERSION = 1.0 \n? SIZE = %s \n? CHARGE = %E \n? COLUMNS X XPRIME Y YPRIME T P\n'%(len(dist.x),dist.charge)
+    header='? VERSION = 1.0 \n? CHARGE = %E \n? COLUMNS X XPRIME Y YPRIME T P  \n'%(dist.charge)
+    f = file(file_name,'w')
+    f.write(header)
+    f.close()
+    f = file(file_name,'a')
+    np.savetxt(f, np.c_[dist.x,dist.px,dist.y,dist.py,dist.t,dist.e],fmt="%e", newline='\n')
+    f.close()
+
+    
+def read_dist_file(fileName):
+    
+    dist = GenesisParticlesDist()
+    dist.filename=fileName
+    
+    dist_column_values={}
+    f=open(fileName,'r')
+    null=f.readline()
+    for line in f: 
+        tokens = line.strip().split()
+        
+        if len(tokens) < 2:
+            continue
+        
+        if tokens[0] == "?" and tokens[1] == "CHARGE":
+            dist.charge = tokens[3]
+        
+        if tokens[0] == "?" and tokens[1] == "COLUMNS":
+            dist_columns = tokens[2:]
+            for col in dist_columns:
+                dist_column_values[col] = []
+            print dist_columns
+ 
+        if tokens[0] != "?":
+            for i in range(0,len(tokens)):
+                dist_column_values[dist_columns[i]].append( float (tokens[i]) )
+
+    dist.x = np.array(dist_column_values['X'])
+    dist.y = np.array(dist_column_values['Y'])
+    dist.px = np.array(dist_column_values['XPRIME'])
+    dist.py = np.array(dist_column_values['YPRIME'])
+    dist.t = np.array(dist_column_values['T'])
+    dist.e = np.array(dist_column_values['P'])
+    
+    dist.x = flipud(dist.x)
+    dist.y = flipud(dist.y)
+    dist.px = flipud(dist.px)
+    dist.py = flipud(dist.py)
+    dist.t = flipud(dist.t)
+    dist.e = flipud(dist.e)
+    
+    return dist
+    
 
 def getAverageUndulatorParameter(lattice, unit=1.0, energy = 17.5):
     positions = sorted(lattice.lattice.keys())
@@ -1463,6 +1514,163 @@ def adapt_rad_file(beam = None, rad_file = None, out_file='tmp.rad'):
     open(out_file,'w').write(rad_file_str(rad))
 
 
+# def transform_beam_file(beam_file = None, transform = [ [25.0,0.1], [21.0, -0.1] ], energy_scale=1, energy_new = None, emit_scale = 1.0, n_interp = None):
+    # if beam_file.__class__ ==str:
+        # beam = read_beam_file(beam_file)
+    # else:
+        # beam=beam_file
+        
+    # zmax, Imax = peaks(beam.z, beam.I, n=1)
+    # idx = np.argmax(beam.z)
+    # beam.idx_max = idx
+    # print ('matching to slice ' + str(idx))
+    
+    # #if plot: plot_beam(plt.figure(), beam)    
+    
+    
+    # if transform!=None:
+        # print ('transforming')
+        # g1x = np.matrix([[beam.betax[idx], beam.alphax[idx]],
+                   # [beam.alphax[idx], (1+beam.alphax[idx]**2)/beam.betax[idx]]])
+
+        # g1y = np.matrix([[beam.betay[idx], beam.alphay[idx]],
+                   # [beam.alphay[idx], (1+beam.alphay[idx]**2)/beam.betay[idx]]])
+
+
+        # b2x = transform[0][0]
+        # a2x = transform[0][1]
+
+        # b2y = transform[1][0]
+        # a2y = transform[1][1]
+        
+        # g2x = np.matrix([[b2x, a2x],
+                   # [a2x, (1+a2x**2)/b2x]])
+
+        # g2y = np.matrix([[b2y, a2y],
+                   # [a2y, (1+a2y**2)/b2y]])
+
+
+        # Mix, Mx = find_transform(g1x,g2x)
+        # Miy, My = find_transform(g1y,g2y)
+        
+        # #print Mi
+        
+        # betax_new = []
+        # alphax_new = []
+
+        # betay_new = []
+        # alphay_new = []
+
+        # x_new = []
+        # px_new = []
+
+        # y_new = []
+        # py_new = []
+
+        
+        # for i in xrange(len(beam.z)):
+            # g1x = np.matrix([[beam.betax[i], beam.alphax[i]],
+                   # [beam.alphax[i], (1+beam.alphax[i]**2)/beam.betax[i]]])
+    
+            # gx = Mix.T * g1x * Mix
+
+            # g1y = np.matrix([[beam.betay[i], beam.alphay[i]],
+                   # [beam.alphay[i], (1+beam.alphay[i]**2)/beam.betay[i]]])
+    
+            # gy = Miy.T * g1y * Miy
+
+            
+            # #print i, gx[0,1], g1x[0,1]
+            
+            # betax_new.append(gx[0,0])
+            # alphax_new.append(gx[0,1])
+
+            # betay_new.append(gy[0,0])
+            # alphay_new.append(gy[0,1])
+            
+            # '''
+            # zx = np.matrix([beam.x[i], beam.px[i]])
+            # zx = Mix * zx
+            # x_new.appned(zx[0]) 
+            # px_new.appned(zx[1])
+
+            # zy = np.matrix([beam.y[i], beam.py[i]])
+            # zy = Miy * zy
+            # y_new.appned(zy[0]) 
+            # py_new.appned(zy[1])
+            # '''
+
+            
+        # #print betax_new
+        # beam_new = Beam()
+        # beam_new.column_values = beam.column_values
+        # beam_new.columns = beam.columns
+        
+        # if energy_new != None:
+            # gamma_new=energy_new / (0.511e-3)
+            # energy_scale=gamma_new/np.mean(np.array(beam.g0))
+        
+        # if n_interp == None:
+        
+            # beam_new.idx_max = idx
+            # beam_new.ex = np.array(beam.ex) * emit_scale
+            # beam_new.ey = np.array(beam.ey) * emit_scale
+            # beam_new.zsep = beam.zsep
+            # beam_new.z = np.array(beam.z)
+            # beam_new.I = np.array(beam.I)
+            # beam_new.g0 = np.array(beam.g0) * energy_scale
+            # beam_new.dg = np.array(beam.dg)
+            
+            # beam_new.eloss = beam.eloss
+    
+            # beam_new.betax = np.array(betax_new)
+            # beam_new.betay = np.array(betay_new)
+            # beam_new.alphax = np.array(alphax_new)
+            # beam_new.alphay = np.array(alphay_new)
+    
+            # beam_new.x = np.array(beam.x) * 0
+            # beam_new.px = np.array(beam.px) * 0
+            # beam_new.y = np.array(beam.y) * 0
+            # beam_new.py = np.array(beam.py) * 0
+        # else:
+            
+            
+            # beam_new.z = np.linspace(beam.z[0], beam.z[-1], n_interp) 
+            # beam_new.I = np.interp(beam_new.z, beam.z, beam.I)
+            
+            # zmax, Imax = peaks(beam_new.z, beam_new.I, n=1)
+            # beam_new.idx_max = np.where(beam_new.z == zmax)[0][0]
+            
+            # beam_new.ex = np.interp(beam_new.z, beam.z, beam.ex) * emit_scale
+            # beam_new.ey = np.interp(beam_new.z, beam.z, beam.ey) * emit_scale
+            # beam_new.zsep = beam.zsep * len(beam.z) / len(beam_new.z)
+            # beam_new.g0 = np.interp(beam_new.z, beam.z, beam.g0) * energy_scale
+            # beam_new.dg = np.interp(beam_new.z, beam.z, beam.dg)
+            
+            # beam_new.eloss = np.interp(beam_new.z, beam.z, beam.eloss)
+    
+            # beam_new.betax = np.interp(beam_new.z, beam.z, betax_new)
+            # beam_new.betay = np.interp(beam_new.z, beam.z, betay_new)
+            # beam_new.alphax = np.interp(beam_new.z, beam.z, alphax_new)
+            # beam_new.alphay = np.interp(beam_new.z, beam.z, alphay_new)
+    
+            # beam_new.x = np.interp(beam_new.z, beam.z, beam.x) 
+            # beam_new.px = np.interp(beam_new.z, beam.z, beam.px) 
+            # beam_new.y = np.interp(beam_new.z, beam.z, beam.y)
+            # beam_new.py = np.interp(beam_new.z, beam.z, beam.py)
+
+
+        
+        # #if plot: 
+        # #    plot_beam(plt.figure(), beam_new)    
+        # #    plt.show()
+    
+    # if transform != None:
+        # beam_new.f_str = beam_file_str(beam_new)
+    
+    # return beam_new
+    
+    
 def transform_beam_file(beam_file = None, out_file='tmp.beam', transform = [ [25.0,0.1], [21.0, -0.1] ], energy_scale=1, energy_new = None, emit_scale = 1, n_interp = None):
     
     beam = read_beam_file(beam_file)
@@ -1662,8 +1870,10 @@ def get_beam_peak(beam = None): #experimental, the code is too inconsistent to i
     if len(beam.I)>1:# and np.amax(beam.I)!=np.amin(beam.I):
         pkslice = np.argmax(beam.I)
         
-        beam_new=deepcopy(beam)
+        # beam_new=deepcopy(beam)
+        beam_new=Beam()
         
+        beam_new.idx_max=pkslice
         beam_new.I=beam.I[pkslice]
         beam_new.alpha_x=beam.alphax[pkslice]
         beam_new.alpha_y=beam.alphay[pkslice]
@@ -1673,12 +1883,19 @@ def get_beam_peak(beam = None): #experimental, the code is too inconsistent to i
         beam_new.emit_yn=beam.ey[pkslice]
         beam_new.gamma_rel=beam.g0[pkslice]
         beam_new.sigma_E=beam.dg[pkslice]*(0.000510998)
+        beam_new.xp=beam.px[pkslice]
+        beam_new.yp=beam.py[pkslice]
+        beam_new.x=beam.x[pkslice]
+        beam_new.y=beam.y[pkslice]
         
         beam_new.E=beam_new.gamma_rel*(0.511e-3)
         beam_new.emit_x = beam_new.emit_xn / beam_new.gamma_rel
         beam_new.emit_y = beam_new.emit_yn / beam_new.gamma_rel
         
-        for parm in ['alphax','alphay','betax','betay','z','ex','ey','g0','dg']:
+        beam_new.tpulse = (beam.z[-1]-beam.z[0])/speed_of_light*1e15/6 #[fs]
+        beam_new.C=np.trapz(beam.I, x=np.array(beam.z)/speed_of_light)*1e9 #bunch charge[nC]
+        
+        for parm in ['alphax','alphay','betax','betay','z','ex','ey','g0','dg','px','py']:
             if hasattr(beam_new,parm):
                 delattr(beam_new,parm)
         

@@ -110,8 +110,63 @@ def rematch(beta_mean, l_fodo, qdh, lat, extra_fodo, beam, qf, qd):
     beam.beta_x, beam.alpha_x = tw0m.beta_x, tw0m.alpha_x
     beam.beta_y, beam.alpha_y = tw0m.beta_y, tw0m.alpha_y
 
+def rematch_beam_lat(beam, lat, extra_fodo, l_fodo, beta_mean):
+    
+    isquad=find([i.__class__==Quadrupole for i in lat.sequence])
+    qd=lat.sequence[isquad[0]]
+    qf=lat.sequence[isquad[1]]
+    qdh=deepcopy(qd)
+    qdh.l/=2
+    '''
+    requires l_fodo to be defined in the lattice
+    '''
+    
+    k, betaMin, betaMax, __ = fodo_parameters(betaXmean=beta_mean, L=l_fodo, verbose = False)
+    
+    k1 = k[0] / qdh.l
+    
+    tw0 = Twiss(beam)
+    
+    print('before rematching k=%f %f   beta=%f %f alpha=%f %f' % (qf.k1, qd.k1, tw0.beta_x, tw0.beta_y, tw0.alpha_x, tw0.alpha_y))
 
-def run(inp, launcher,readall=False,dfl_slipage_incl=True,assembly_ver='pyt'):
+        
+    extra = MagneticLattice(extra_fodo)
+    tws=twiss(extra, tw0)
+    tw2 = tws[-1]
+    
+    tw2m = Twiss(tw2)
+    tw2m.beta_x = betaMin[0]
+    tw2m.beta_y = betaMax[0]
+    tw2m.alpha_x = 0.0
+    tw2m.alpha_y = 0.0
+    tw2m.gamma_x = (1 + tw2m.alpha_x * tw2m.alpha_x) / tw2m.beta_x
+    tw2m.gamma_y = (1 + tw2m.alpha_y * tw2m.alpha_y) / tw2m.beta_y
+
+    
+    #k1 += 0.5
+    
+    qf.k1 = k1
+    qd.k1 = -k1
+    qdh.k1 = -k1
+    
+    lat.update_transfer_maps()
+    extra.update_transfer_maps()
+
+    R1 = lattice_transfer_map( extra, beam.E )
+    Rinv = np.linalg.inv(R1)
+    
+    m1 = TransferMap()
+
+    m1.R = lambda e: Rinv
+
+    tw0m = m1.map_x_twiss(tw2m)
+    print 'after rematching k=%f %f   beta=%f %f alpha=%f %f' % (qf.k1, qd.k1, tw0m.beta_x, tw0m.beta_y, tw0m.alpha_x, tw0m.alpha_y)
+
+    beam.beta_x, beam.alpha_x = tw0m.beta_x, tw0m.alpha_x
+    beam.beta_y, beam.alpha_y = tw0m.beta_y, tw0m.alpha_y
+    
+
+def run(inp, launcher,readall=False,dfl_slipage_incl=True,assembly_ver='sys'):
     # inp               - GenesisInput() object with genesis input parameters
     # launcher          - MpiLauncher() object obtained via get_genesis_launcher() function
     # readall           - Parameter to read and calculate all _slice_ values from the output. 
@@ -269,16 +324,19 @@ def assemble(out_file,binary=1,remove=1,tailappend=0,ram=1):
 '''
 #### 12.05.2016 MODIFIED BY GG FOR MAXWELL####
 '''
-def get_genesis_launcher():
+def get_genesis_launcher(launcher_program=''):
     host = socket.gethostname()
-    
+
     launcher = MpiLauncher()
-    
-    if host.startswith('kolmogorov'):
-        launcher.program = '/home/iagapov/workspace/xcode/codes/genesis/genesis < tmp.cmd | tee log'
-    if host.startswith('max'):
-        launcher.program = '/data/netapp/xfel/products/genesis/genesis < tmp.cmd | tee log'
-    launcher.mpiParameters ='-x PATH -x MPI_PYTHON_SITEARCH -x PYTHONPATH' #added -n
+    if launcher_program!='':
+        launcher.program=launcher_program
+    else:
+
+        if host.startswith('kolmogorov'):
+            launcher.program = '/home/iagapov/workspace/xcode/codes/genesis/genesis < tmp.cmd | tee log'
+        if host.startswith('max'):
+            launcher.program = '/data/netapp/xfel/products/genesis/genesis < tmp.cmd | tee log'
+        launcher.mpiParameters ='-x PATH -x MPI_PYTHON_SITEARCH -x PYTHONPATH' #added -n
     #launcher.nproc = nproc
     return launcher
 
@@ -420,7 +478,12 @@ class Display:
 
 def plot_beam(fig, beam):
     
-    ax = fig.add_subplot(321) 
+    if mean(beam.x)==0 and mean(beam.y)==0 and mean(beam.px)==0 and mean(beam.py)==0:
+        plot_xy=0
+    else:
+        plot_xy=1
+        
+    ax = fig.add_subplot(2+plot_xy,2,1) 
     plt.grid(True)
     ax.set_xlabel(r'$\mu m$')
     p1,= plt.plot(1.e6 * np.array(beam.z),beam.I,'r',lw=3)
@@ -430,9 +493,9 @@ def plot_beam(fig, beam):
     
     p2,= plt.plot(1.e6 * np.array(beam.z),1.e-3 * np.array(beam.eloss),'g',lw=3)
     
-    ax.legend([p1, p2],['I','Wake [KV/m]'])
-    
-    ax = fig.add_subplot(322) 
+    ax.legend([p1, p2],['I [A]','Wake [KV/m]'])
+    #ax.set_xlim([np.amin(beam.z),np.amax(beam.x)])
+    ax = fig.add_subplot(2+plot_xy,2,2) 
     plt.grid(True)
     ax.set_xlabel(r'$\mu m$')
     #p1,= plt.plot(1.e6 * np.array(beam.z),1.e-3 * np.array(beam.eloss),'r',lw=3)
@@ -442,7 +505,7 @@ def plot_beam(fig, beam):
 
     ax.legend([p1,p2],[r'$\gamma$',r'$\delta \gamma$'])
     
-    ax = fig.add_subplot(323) 
+    ax = fig.add_subplot(2+plot_xy,2,3) 
     plt.grid(True)
     ax.set_xlabel(r'$\mu m$')
     p1, = plt.plot(1.e6 * np.array(beam.z),beam.ex, 'r', lw=3)
@@ -453,7 +516,7 @@ def plot_beam(fig, beam):
     #ax3.legend([p3,p4],[r'$\varepsilon_x$',r'$\varepsilon_y$'])
     
     
-    ax = fig.add_subplot(324)
+    ax = fig.add_subplot(2+plot_xy,2,4)
     plt.grid(True)
     ax.set_xlabel(r'$\mu m$')
     p1, = plt.plot(1.e6 * np.array(beam.z),beam.betax, 'r', lw=3)
@@ -462,23 +525,23 @@ def plot_beam(fig, beam):
     
     ax.legend([p1,p2],[r'$\beta_x$',r'$\beta_y$'])
 
+    if plot_xy:
 
-    ax = fig.add_subplot(325)
-    plt.grid(True)
-    ax.set_xlabel(r'$\mu m$')
-    p1, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.x), 'r', lw=3)
-    p2, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.y), 'g', lw=3)
-    
-    ax.legend([p1,p2],[r'$x [\mu m]$',r'$y [\mu m]$'])
+        ax = fig.add_subplot(3,2,5)
+        plt.grid(True)
+        ax.set_xlabel(r'$\mu m$')
+        p1, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.x), 'r', lw=3)
+        p2, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.y), 'g', lw=3)
+        
+        ax.legend([p1,p2],[r'$x [\mu m]$',r'$y [\mu m]$'])
 
-
-    ax = fig.add_subplot(326)
-    plt.grid(True)
-    ax.set_xlabel(r'$\mu m$')
-    p1, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.px), 'r', lw=3)
-    p2, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.py), 'g', lw=3)
-    
-    ax.legend([p1,p2],[r'$p_x [\mu rad]$',r'$p_y [\mu rad]$'])
+        ax = fig.add_subplot(3,2,6)
+        plt.grid(True)
+        ax.set_xlabel(r'$\mu m$')
+        p1, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.px), 'r', lw=3)
+        p2, = plt.plot(1.e6 * np.array(beam.z),1.e6 * np.array(beam.py), 'g', lw=3)
+        
+        ax.legend([p1,p2],[r'$p_x [\mu rad]$',r'$p_y [\mu rad]$'])
 
 def plot_beam_2(fig, beam, iplot=0):
     
