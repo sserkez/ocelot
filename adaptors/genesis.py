@@ -314,7 +314,44 @@ class GenesisInput: # Genesis input files storage object
         self.ilog  =    0 #Create a log file.
         self.ffspec =    0 # amplitude/phase values for spectrum calculation: 0 - on-axis power/phase along the pulse, -1 - the same in far field, 1 - near field total power
         
-  
+        self.trama = 0 #Non zero value enables that a transport matrix is applied to the electron distribution when importing it with PARTFILE. The individual matrix is defined by ITRAM$$
+        self.itram11 = 0 #The pound signs are place holders for numbers between 1 and 6 (e.g. ITRAM21) and are defining the matrix element for the transport matrix, which is applied when importing a paticle distribution with the PARTFILE option. The matrix is defined in a standard way, acting on the vector (position in X, angle in X, position in Y, angle in Y, position in s, relative energy spread). The default value is the identity matrix. 
+        self.itram12 = 0
+        self.itram13 = 0
+        self.itram14 = 0
+        self.itram15 = 0
+        self.itram16 = 0
+        self.itram21 = 0
+        self.itram22 = 0
+        self.itram23 = 0
+        self.itram24 = 0
+        self.itram25 = 0
+        self.itram26 = 0
+        self.itram31 = 0
+        self.itram32 = 0
+        self.itram33 = 0
+        self.itram34 = 0
+        self.itram35 = 0
+        self.itram36 = 0
+        self.itram41 = 0
+        self.itram42 = 0
+        self.itram43 = 0
+        self.itram44 = 0
+        self.itram45 = 0
+        self.itram46 = 0
+        self.itram51 = 0
+        self.itram52 = 0
+        self.itram53 = 0
+        self.itram54 = 0
+        self.itram55 = 0
+        self.itram56 = 0
+        self.itram61 = 0
+        self.itram62 = 0
+        self.itram63 = 0
+        self.itram64 = 0
+        self.itram65 = 0
+        self.itram66 = 0
+
         #self.useBeamFile = False
 
     def input(self):
