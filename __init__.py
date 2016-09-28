@@ -2,7 +2,7 @@
 general ocelot description
 '''
 
-__version__ = '16.7.dev'
+__version__ = '16.8.rc'
 
 __all__ = ['Twiss', 'twiss', "Beam", "Particle", "get_current", "get_envelope",  # beam
             "ellipse_from_twiss", "ParticleArray",  # beam
@@ -39,3 +39,4 @@ from ocelot.cpbd.csr import *
 from ocelot.cpbd.wake3D import *
 print('initializing ocelot...')
 logger = Logger()
+xrange=range
