@@ -482,7 +482,24 @@ class GenesisOutput:
         else:
             p, = self.parameters[name]
             return float(p.replace('D','E'))
+
+class GenStatOutput:
+    def __init__(self):
+        return
         
+    def zi(self,z):
+        if z>np.amax(self.z):
+            z=np.amax(self.z)
+        return np.where(self.z>=z)[0][0]
+    def si(self,s):
+        if s>np.amax(self.s):
+            s=np.amax(self.s)
+        return np.where(self.s>=s)[0][0]
+    def fi(self,f):
+        if f>np.amax(self.f):
+            f=np.amax(self.f)
+        return np.where(self.f>=f)[0][0]
+
 class GenesisParticles: 
     '''
     Genesis particle *.dpa files storage object
@@ -651,13 +668,18 @@ def read_genesis_output(filePath, readall=True, debug=1, precision=float):
             #print 'input:', tokens
 #
         if chunk == 'slice' and readall:
-            # print(tokens)
-            tokens_fixed=re.sub(r'([0-9])\-([0-9])',r'\g<1>E-\g<2>',' '.join(tokens))
-            # print(tokens_fixed)
-            tokens_fixed=re.sub(r'([0-9])\+([0-9])',r'\g<1>E+\g<2>',tokens_fixed)
-            # print(tokens_fixed)
-            tokens=tokens_fixed.split()
-            vals = list(map(precision,tokens))
+
+            # tokens_fixed=re.sub(r'([0-9])\-([0-9])',r'\g<1>E-\g<2>',' '.join(tokens))
+            # tokens_fixed=re.sub(r'([0-9])\+([0-9])',r'\g<1>E+\g<2>',tokens_fixed)
+            # tokens=tokens_fixed.split()
+            try:
+                vals = list(map(precision,tokens))
+            except ValueError:
+                tokens_fixed=re.sub(r'([0-9])\-([0-9])',r'\g<1>E-\g<2>',' '.join(tokens))
+                tokens_fixed=re.sub(r'([0-9])\+([0-9])',r'\g<1>E+\g<2>',tokens_fixed)
+                tokens_fixed=tokens_fixed.split()
+                vals = list(map(precision,tokens_fixed))
+                
             output_unsorted.append(vals)
 
         if chunk == 'slices':
@@ -687,7 +709,7 @@ def read_genesis_output(filePath, readall=True, debug=1, precision=float):
     
     assert nSlice!=0,'.out is empty!'
             
-    assert(out.n[-1]-out.n[0]+1)== len(out.n),'.out is missing at least '+str((out.n[-1]-out.n[0]+1)-len(out.n))+' slices!'
+    assert(out.n[-1]-out.n[0])== (len(out.n)-1)*out('ishsty'),'.out is missing at least '+str((out.n[-1]-out.n[0])-(len(out.n)-1)*out('ishsty'))+' slices!'
         # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         # print('WARNING, .out is missing at least '+str((out.n[-1]-out.n[0]+1)-len(out.n))+' slices')
         
@@ -719,17 +741,16 @@ def read_genesis_output(filePath, readall=True, debug=1, precision=float):
         out.leng=2*out('dgrid')
 
     if out('itdp') == True:
-        out.s = out('zsep') * out('xlamds') * np.arange(0,out.nSlices)
+        out.s = out('zsep') * out('xlamds') * (out.n-out.n[0])#np.arange(0,out.nSlices)
         out.t = out.s / speed_of_light * 1.e+15
-        #out.dt = (out.t[1] - out.t[0]) * 1.e-15
-        out.dt=out('zsep') * out('xlamds') / speed_of_light 
-        out.beam_charge=np.sum(out.I*out('zsep')*out('xlamds')/speed_of_light)
+        out.dt = (out.t[1] - out.t[0]) * 1.e-15
+        # out.dt=out('zsep') * out('xlamds') / speed_of_light 
+        out.beam_charge=np.sum(out.I*out.dt)
         out.sn_Imax=np.argmax(out.I) #slice number with maximum current
         if readall == True:
-#            out.spec = np.fft.fft(np.sqrt(np.array(out.power) ) * np.exp( 1.j* np.array(out.phi_mid) ) ) # may be wrong
             out.spec = abs(np.fft.fft(np.sqrt(np.array(out.power)) * np.exp( 1.j* np.array(out.phi_mid) ) , axis=0))**2/sqrt(out.nSlices)/(2*out.leng/out('ncar'))**2/1e10
             e_0=1239.8/out('xlamds')/1e9            
-            out.freq_ev = h_eV_s * np.fft.fftfreq(len(out.spec), d=out('zsep') * out('xlamds') / speed_of_light)+e_0# d=out.dt
+            out.freq_ev = h_eV_s * np.fft.fftfreq(len(out.spec), d=out('zsep') * out('xlamds')*out('ishsty') / speed_of_light)+e_0# d=out.dt
             
             out.spec = np.fft.fftshift(out.spec,axes=0)
             out.freq_ev = np.fft.fftshift(out.freq_ev,axes=0)
@@ -783,12 +804,74 @@ def read_genesis_output(filePath, readall=True, debug=1, precision=float):
     #             delattr(out,parm[0])
         out.power=out.p_mid[:,-1]
         out.phi=out.phi_mid[:,-1]
-        out.energy=np.mean(out.p_int,axis=0)*out('xlamds')*out('zsep')*out.nSlices/speed_of_light
+        # out.energy=np.mean(out.p_int,axis=0)*out('xlamds')*out('zsep')*out.nSlices/speed_of_light
+        out.energy=np.sum(out.p_int*out.dt,axis=0)
     
     if debug>0: print('      done in %.3f seconds' % (time.time() - start_time))        
     return out
 
+def read_genesis_output_stat(proj_dir,stage,run_inp=[],param_inp=[],debug=1):
+    if debug>0: print ('    reading stat genesis output')
+    start_time = time.time()
+    
+    if proj_dir[-1]!='/':
+        proj_dir+='/'
 
+    outlist=[GenesisOutput() for i in range(1000)]
+
+    if run_inp==[]:
+        run_range=range(1000)
+    else:
+        run_range=run_inp
+
+    run_range_good=[]
+
+    for irun in run_range:
+        out_file=proj_dir+'run_'+str(irun)+'/run.'+str(irun)+'.s'+str(stage)+'.gout'
+        if os.path.isfile(out_file):
+#                try:
+            outlist[irun] = read_genesis_output(out_file,readall=1,debug=1)
+            run_range_good.append(irun)
+#                except:
+    run_range=run_range_good
+
+    if param_inp==[]:
+        if debug>1: print(outlist[run_range[0]].sliceKeys_used)
+        param_range=outlist[run_range[0]].sliceKeys_used
+    else:
+        param_range=param_inp
+
+
+    out_stat=GenStatOutput()
+    for param in param_range:
+        param_matrix=[]
+        for irun in run_range:
+            if not hasattr(outlist[irun],param):
+                continue
+            else:
+                param_matrix.append(deepcopy(getattr(outlist[irun],param)))
+        
+        param_matrix=np.array(param_matrix)
+        if ndim(param_matrix)==3:
+            param_matrix=np.swapaxes(param_matrix,0,2)
+        elif ndim(param_matrix)==2 and shape(param_matrix)[1]==outlist[irun].nZ:
+            param_matrix=np.swapaxes(param_matrix,0,1)[:,np.newaxis,:]
+        else:
+            pass
+        setattr(out_stat,param,param_matrix)
+    
+    out_stat.stage=stage
+    out_stat.dir=proj_dir
+    out_stat.run=run_range
+    out_stat.z=outlist[irun].z
+    out_stat.s=outlist[irun].s
+    out_stat.f=outlist[irun].freq_lamd
+    out_stat.t=outlist[irun].t
+    out_stat.dt=outlist[irun].dt
+    
+    if debug>0: print('      done in %.2f seconds' % (time.time() - start_time))       
+    return out_stat
+    
 def read_particle_file_out(out,filePath=None,debug=1):
     if filePath==None:
         filePath=out.filePath+'.dpa'
@@ -838,7 +921,7 @@ def dpa2dist(out,dpa,num_part=1e5,smear=1,debug=False):
     
     npart=int(out('npart'))
     # nslice=int(out('nslice'))
-    nslice=int(out.nSlices)
+    nslice=int(out.nSlices)*out('ishsty')
     nbins=int(out('nbins'))
     xlamds=out('xlamds')
     zsep=int(out('zsep'))
